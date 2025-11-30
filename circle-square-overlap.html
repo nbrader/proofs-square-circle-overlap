@@ -143,8 +143,8 @@
             </div>
             <div class="control-group">
                 <label for="resolution">3D Resolution:</label>
-                <input type="range" id="resolution" min="20" max="60" value="30" step="5">
-                <span class="value-display" id="resolutionValue">30</span>
+                <input type="range" id="resolution" min="40" max="120" value="60" step="10">
+                <span class="value-display" id="resolutionValue">60</span>
             </div>
             <div class="control-group">
                 <label for="showGrid">Show Grid:</label>
@@ -214,7 +214,7 @@
                 this.cy = 0;  // Circle center y in [-?, ?]
 
                 this.isDragging = false;
-                this.resolution = 30;
+                this.resolution = 60;
                 this.currentCase = '';
                 this.debugText = '';
 
@@ -523,15 +523,18 @@
                 const geometry = new THREE.PlaneGeometry(range, range, res - 1, res - 1);
                 const vertices = geometry.attributes.position.array;
 
+                // Remap geometry: X (red) and Z (blue) are inputs, Y (green) is height
                 for (let i = 0; i < res; i++) {
                     for (let j = 0; j < res; j++) {
                         const idx = (i * res + j) * 3;
-                        const x = vertices[idx];
-                        const y = vertices[idx + 1];
+                        const x = vertices[idx];        // Red axis - input
+                        const z = vertices[idx + 1];    // Blue axis - input (read before overwrite)
 
-                        const overlap = this.calculateOverlap(x, -y, this.R);
+                        const overlap = this.calculateOverlap(x, -z, this.R);
 
-                        vertices[idx + 2] = overlap * 2;
+                        // Normalize height to π (max possible overlap) so it stays in view
+                        vertices[idx + 1] = overlap / Math.PI;  // Green - height (normalized)
+                        vertices[idx + 2] = z;                   // Blue - input
                     }
                 }
 
@@ -563,8 +566,8 @@
                 requestAnimationFrame(() => this.animate3D());
 
                 if (this.surfaceMesh) {
-                    this.surfaceMesh.rotation.z += 0.002;
-                    this.wireframe.rotation.z += 0.002;
+                    this.surfaceMesh.rotation.y += 0.002;
+                    this.wireframe.rotation.y += 0.002;
                 }
 
                 this.renderer.render(this.scene, this.camera);
