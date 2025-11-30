@@ -447,117 +447,174 @@
                 return 0;
             }
 
+            circleSegmentIntersections(p1, p2, r) {
+                // Return intersections with circle at origin, along segment p1->p2, as {t, x, y}
+                const dx = p2.x - p1.x;
+                const dy = p2.y - p1.y;
+                const a = dx * dx + dy * dy;
+                const b = 2 * (p1.x * dx + p1.y * dy);
+                const c = p1.x * p1.x + p1.y * p1.y - r * r;
+                const disc = b * b - 4 * a * c;
+                if (disc < 0) return [];
+                const sqrtDisc = Math.sqrt(disc);
+                const t1 = (-b - sqrtDisc) / (2 * a);
+                const t2 = (-b + sqrtDisc) / (2 * a);
+                const hits = [];
+                if (t1 >= 0 && t1 <= 1) hits.push({ t: t1, x: p1.x + t1 * dx, y: p1.y + t1 * dy });
+                if (t2 >= 0 && t2 <= 1 && disc > 0) hits.push({ t: t2, x: p1.x + t2 * dx, y: p1.y + t2 * dy });
+                return hits.sort((a, b) => a.t - b.t);
+            }
+
+            overlapByBoundary(cx, cy, r) {
+                const s = SQUARE_HALF_SIDE;
+                const squareVerts = [
+                    { x: -s, y: -s },
+                    { x: s, y: -s },
+                    { x: s, y: s },
+                    { x: -s, y: s }
+                ];
+
+                const circlePts = [];
+                let area = 0;
+
+                // Line contributions along square edges
+                for (let i = 0; i < 4; i++) {
+                    const v1 = squareVerts[i];
+                    const v2 = squareVerts[(i + 1) % 4];
+                    const p1 = { x: v1.x - cx, y: v1.y - cy };
+                    const p2 = { x: v2.x - cx, y: v2.y - cy };
+
+                    const intersections = this.circleSegmentIntersections(p1, p2, r);
+                    if (intersections.length > 0) {
+                        intersections.forEach((hit) => {
+                            circlePts.push({ x: hit.x + cx, y: hit.y + cy });
+                        });
+                    }
+
+                    const candidates = [{ t: 0, x: p1.x, y: p1.y }, ...intersections, { t: 1, x: p2.x, y: p2.y }];
+                    for (let j = 0; j < candidates.length - 1; j++) {
+                        const a = candidates[j];
+                        const b = candidates[j + 1];
+                        const mid = { x: 0.5 * (a.x + b.x), y: 0.5 * (a.y + b.y) };
+                        const midInside = mid.x * mid.x + mid.y * mid.y <= r * r;
+                        if (midInside) {
+                            area += 0.5 * (a.x * b.y - a.y * b.x);
+                        }
+                    }
+                }
+
+                // Add square vertices on circle
+                for (const v of squareVerts) {
+                    const dx = v.x - cx;
+                    const dy = v.y - cy;
+                    if (Math.abs(dx * dx + dy * dy - r * r) < 1e-12) {
+                        circlePts.push({ x: v.x, y: v.y });
+                    }
+                }
+
+                // If no intersections and center inside square, circle fully inside
+                if (circlePts.length === 0 && Math.abs(cx) <= s && Math.abs(cy) <= s && r <= s - Math.max(Math.abs(cx), Math.abs(cy))) {
+                    return Math.PI * r * r;
+                }
+
+                // Unique angles for arcs
+                const angles = [];
+                const seen = new Set();
+                for (const p of circlePts) {
+                    const ang = Math.atan2(p.y - cy, p.x - cx);
+                    const key = Math.round(ang * 1e9);
+                    if (!seen.has(key)) {
+                        seen.add(key);
+                        angles.push(ang);
+                    }
+                }
+                angles.sort((a, b) => a - b);
+
+                if (angles.length >= 2) {
+                    for (let i = 0; i < angles.length; i++) {
+                        const a1 = angles[i];
+                        const a2 = angles[(i + 1) % angles.length];
+                        const delta = ((a2 - a1 + 2 * Math.PI) % (2 * Math.PI));
+                        const midAngle = a1 + delta / 2;
+                        const midPoint = {
+                            x: cx + r * Math.cos(midAngle),
+                            y: cy + r * Math.sin(midAngle)
+                        };
+                        if (Math.abs(midPoint.x) <= s + 1e-12 && Math.abs(midPoint.y) <= s + 1e-12) {
+                            area += 0.5 * r * r * delta;
+                        }
+                    }
+                }
+
+                return Math.abs(area);
+            }
+
             calculateOverlap(cx, cy, R) {
                 this.debugText = `cx=${cx.toFixed(3)}, cy=${cy.toFixed(3)}, R=${R.toFixed(3)}\n`;
 
-                // Work with absolute values (symmetry)
+                // Work with absolute values (symmetry) for case labeling only
                 const ax = Math.abs(cx);
                 const ay = Math.abs(cy);
 
-                // Square is [-1, 1] × [-1, 1]
                 const s = SQUARE_HALF_SIDE;
-
-                // Distance from center beyond square edges
                 const dx = Math.max(0, ax - s);
                 const dy = Math.max(0, ay - s);
-
-                // Distance to nearest corner (positive quadrant corner is at (s, s) = (1, 1))
                 const distToNearestCorner = Math.sqrt((ax - s) * (ax - s) + (ay - s) * (ay - s));
                 const cornerInCircle = distToNearestCorner <= R;
+                const sagitta_x = Math.max(0, ax + R - s);
+                const sagitta_y = Math.max(0, ay + R - s);
 
                 this.debugText += `|cx|=${ax.toFixed(3)}, |cy|=${ay.toFixed(3)}\n`;
                 this.debugText += `dx=${dx.toFixed(3)}, dy=${dy.toFixed(3)}\n`;
                 this.debugText += `distToCorner=${distToNearestCorner.toFixed(3)}, cornerInCircle=${cornerInCircle}\n`;
-
-                // Sagittas (how far circle extends beyond edges)
-                const sagitta_x = Math.max(0, ax + R - s);
-                const sagitta_y = Math.max(0, ay + R - s);
-
                 this.debugText += `sagitta_x=${sagitta_x.toFixed(3)}, sagitta_y=${sagitta_y.toFixed(3)}\n`;
 
-                // Circle fully inside
+                // Case labeling (does not drive area anymore)
+                let caseType = 'H';
                 if (ax + R <= s && ay + R <= s) {
-                    this.currentCase = 'A';
+                    caseType = 'A';
                     this.debugText += 'Case A: Fully inside\n';
-                    return this.circleArea(R);
-                }
-
-                // Check for no overlap - circle doesn't reach square
-                if (dx > 0 && dy > 0 && distToNearestCorner > R) {
-                    this.currentCase = 'H';
+                } else if (dx > 0 && dy > 0 && distToNearestCorner > R) {
+                    caseType = 'H';
                     this.debugText += 'Case H: No overlap\n';
-                    return 0;
-                }
-
-                // Determine if we're in a corner-influenced case
-                const inCornerRegion = sagitta_x > 0 && sagitta_y > 0;
-
-                if (inCornerRegion) {
-                    // Circle extends beyond both edges
-                    if (ax < s && ay < s) {
-                        // Center inside square, circle extends to corner region
-                        if (cornerInCircle) {
-                            this.currentCase = 'D';
-                            this.debugText += 'Case D: Center inside, corner inside circle\n';
-                            return this.caseDOverlapArea(R, ax, ay);
+                } else {
+                    const inCornerRegion = sagitta_x > 0 && sagitta_y > 0;
+                    if (inCornerRegion) {
+                        if (ax < s && ay < s) {
+                            caseType = cornerInCircle ? 'D' : 'C';
+                            this.debugText += caseType === 'D'
+                                ? 'Case D: Center inside, corner inside circle\n'
+                                : 'Case C: Center inside, corner outside circle\n';
+                        } else if (ax >= s && ay >= s) {
+                            if (cornerInCircle) {
+                                caseType = 'G';
+                                this.debugText += 'Case G: Corner sector (center outside both)\n';
+                            }
                         } else {
-                            this.currentCase = 'C';
-                            this.debugText += 'Case C: Center inside, corner outside circle\n';
-                            return this.caseCOverlapArea(R, sagitta_x, sagitta_y);
+                            if (cornerInCircle) {
+                                caseType = 'F';
+                                this.debugText += 'Case F: Mixed position, corner inside circle\n';
+                            }
                         }
-                    } else if (ax >= s && ay >= s) {
-                        // Center outside both edges
-                        if (cornerInCircle) {
-                            this.currentCase = 'G';
-                            this.debugText += 'Case G: Corner sector (center outside both)\n';
-                            return this.caseGOverlapArea(R, ax, ay);
+                    }
+
+                    if (caseType === 'H' && ax < s && ay < s && (sagitta_x > 0 || sagitta_y > 0)) {
+                        caseType = 'B';
+                        this.debugText += 'Case B: Center inside, extends beyond edge(s)\n';
+                    }
+
+                    if (caseType === 'H' && (ax >= s || ay >= s)) {
+                        const dxToEdge = ax >= s ? (ax - s) : 0;
+                        const dyToEdge = ay >= s ? (ay - s) : 0;
+                        if ((ax >= s && dxToEdge <= R) || (ay >= s && dyToEdge <= R)) {
+                            caseType = 'E';
+                            this.debugText += 'Case E: Edge segment (center outside)\n';
                         }
-                        // else fall through to check E/H below
-                    } else {
-                        // Center outside one edge, inside the other
-                        if (cornerInCircle) {
-                            this.currentCase = 'F';
-                            this.debugText += 'Case F: Mixed position, corner inside circle\n';
-                            return this.caseFOverlapArea(R, ax, ay);
-                        }
-                        // else fall through to check E/H below
                     }
                 }
 
-                // Case B: Center inside, extends beyond one or more edges
-                if (ax < s && ay < s && (sagitta_x > 0 || sagitta_y > 0)) {
-                    this.currentCase = 'B';
-                    this.debugText += 'Case B: Center inside, extends beyond edge(s)\n';
-                    const sag = Math.max(sagitta_x, sagitta_y);
-                    return this.caseBOverlapArea(R, sag);
-                }
-
-                // Case E: Center outside, circle reaches square edge
-                // For center outside square: check if we can reach an edge
-                if ((ax >= s || ay >= s)) {
-                    // Distance to closest edge (considering we might be inside in one dimension)
-                    const dxToEdge = ax >= s ? (ax - s) : 0;
-                    const dyToEdge = ay >= s ? (ay - s) : 0;
-
-                    // Check if circle reaches square
-                    if ((ax >= s && dxToEdge <= R) || (ay >= s && dyToEdge <= R)) {
-                        this.currentCase = 'E';
-                        this.debugText += 'Case E: Edge segment (center outside)\n';
-                        // For Case E: sagitta = R - distance_to_edge
-                        const sagE_x = ax >= s ? (R - dxToEdge) : 0;
-                        const sagE_y = ay >= s ? (R - dyToEdge) : 0;
-                        const sagE = Math.max(sagE_x, sagE_y);
-                        this.debugText += `sagE_x=${sagE_x.toFixed(3)}, sagE_y=${sagE_y.toFixed(3)}, sagE=${sagE.toFixed(3)}\n`;
-                        return this.caseEOverlapArea(R, sagE);
-                    }
-                }
-
-                // Case H: No overlap
-                this.currentCase = 'H';
-                this.debugText += 'Case H: No overlap\n';
-                return 0;
-
-                return 0;
+                this.currentCase = caseType;
+                return this.overlapByBoundary(cx, cy, R);
             }
 
             update3DSurface() {
