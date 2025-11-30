@@ -359,63 +359,29 @@
                 return this.circleArea(r) - this.segmentArea(r, sagitta_x) - this.segmentArea(r, sagitta_y);
             }
 
-            caseDOverlapArea(r, centerX, centerY) {
+            caseDOverlapArea(r, dxToCorner, dyToCorner) {
                 // Case D: center inside square, corner inside circle.
-                // Compute area as: sector between the two edge intersection points
-                // plus the two triangles (center, corner, intersection).
-                const s = SQUARE_HALF_SIDE;
-                const dxToCorner = s - centerX;
-                const dyToCorner = s - centerY;
+                // Use the reference formula (matching the Haskell implementation)
+                // where x, y are the distances from the circle center to the
+                // square corner along the axes: x = (s - |cx|), y = (s - |cy|).
+                const x = dxToCorner;
+                const y = dyToCorner;
 
-                // Guard against invalid inputs (shouldn't happen for Case D).
-                if (dxToCorner < 0 || dyToCorner < 0) return 0;
-                if (dxToCorner * dxToCorner + dyToCorner * dyToCorner > r * r) return 0;
+                if (x < 0 || y < 0) return 0;
+                if (x > r || y > r) return 0;
 
-                const topDelta = Math.max(0, r * r - dyToCorner * dyToCorner);
-                const rightDelta = Math.max(0, r * r - dxToCorner * dxToCorner);
-                if (topDelta === 0 && rightDelta === 0) return 0;
+                const sqrtX = Math.sqrt(Math.max(0, r * r - x * x));
+                const sqrtY = Math.sqrt(Math.max(0, r * r - y * y));
 
-                const topOffset = Math.sqrt(topDelta);
-                const rightOffset = Math.sqrt(rightDelta);
+                const term1 = x * y;
+                const term2 = 0.5 * x * sqrtX;
+                const term3 = 0.5 * y * sqrtY;
 
-                const pickOnEdge = (candidates) => {
-                    const inSquare = candidates.filter((v) => Math.abs(v) <= s + 1e-9);
-                    if (inSquare.length === 0) return null;
-                    const positive = inSquare.filter((v) => v >= 0);
-                    return positive.length ? Math.max(...positive) : inSquare[0];
-                };
+                const chordLen = Math.sqrt((x + sqrtY) * (x + sqrtY) + (y + sqrtX) * (y + sqrtX));
+                const ratio = Math.min(1, Math.max(-1, chordLen / (2 * r)));
+                const term4 = r * r * Math.asin(ratio);
 
-                const xTop = pickOnEdge([centerX + topOffset, centerX - topOffset]);
-                const yRight = pickOnEdge([centerY + rightOffset, centerY - rightOffset]);
-                if (xTop === null || yRight === null) return 0;
-
-                const cornerVec = { x: dxToCorner, y: dyToCorner };
-                const topVec = { x: xTop - centerX, y: s - centerY };
-                const rightVec = { x: s - centerX, y: yRight - centerY };
-
-                const angleDelta = (from, to) => {
-                    let diff = to - from;
-                    if (diff < 0) diff += 2 * Math.PI;
-                    return diff;
-                };
-
-                const angleTop = Math.atan2(topVec.y, topVec.x);
-                const angleRight = Math.atan2(rightVec.y, rightVec.x);
-                const angleCorner = Math.atan2(cornerVec.y, cornerVec.x);
-
-                // Pick the sector that passes through the corner direction.
-                let sectorTheta = angleDelta(angleTop, angleRight);
-                const cornerSweep = angleDelta(angleTop, angleCorner);
-                if (cornerSweep > sectorTheta) {
-                    sectorTheta = 2 * Math.PI - sectorTheta;
-                }
-                const sectorArea = 0.5 * r * r * sectorTheta;
-
-                const cross = (a, b) => a.x * b.y - a.y * b.x;
-                const triangle1 = 0.5 * Math.abs(cross(cornerVec, topVec));
-                const triangle2 = 0.5 * Math.abs(cross(cornerVec, rightVec));
-
-                return sectorArea + triangle1 + triangle2;
+                return term1 + term2 + term3 + term4;
             }
 
             caseEOverlapArea(r, sagitta_y) {
@@ -474,15 +440,23 @@
                         return diff;
                     };
 
-                    const angleH = Math.atan2(horizVec.y, horizVec.x);
-                    const angleV = Math.atan2(vertVec.y, vertVec.x);
-                    const angleCorner = Math.atan2(cornerVec.y, cornerVec.x);
+                    const normalize = (a) => {
+                        let ang = a % (2 * Math.PI);
+                        if (ang < 0) ang += 2 * Math.PI;
+                        return ang;
+                    };
 
-                    let sectorTheta = angleDelta(angleH, angleV);
-                    const cornerSweep = angleDelta(angleH, angleCorner);
-                    if (cornerSweep > sectorTheta) {
-                        sectorTheta = 2 * Math.PI - sectorTheta;
-                    }
+                    const angleH = normalize(Math.atan2(horizVec.y, horizVec.x));
+                    const angleV = normalize(Math.atan2(vertVec.y, vertVec.x));
+                    const angleCorner = normalize(Math.atan2(cornerVec.y, cornerVec.x));
+
+                    const isBetweenCCW = (start, end, test) =>
+                        angleDelta(start, test) <= angleDelta(start, end) + 1e-12;
+
+                    const ccwArc = angleDelta(angleH, angleV);
+                    const cwArc = 2 * Math.PI - ccwArc;
+                    const sectorTheta = isBetweenCCW(angleH, angleV, angleCorner) ? ccwArc : cwArc;
+
                     const sectorArea = 0.5 * r * r * sectorTheta;
 
                     const cross = (a, b) => a.x * b.y - a.y * b.x;
@@ -559,7 +533,9 @@
                         if (cornerInCircle) {
                             this.currentCase = 'D';
                             this.debugText += 'Case D: Center inside, corner inside circle\n';
-                            return this.caseDOverlapArea(R, ax, ay);
+                            const dxCorner = s - ax;
+                            const dyCorner = s - ay;
+                            return this.caseDOverlapArea(R, dxCorner, dyCorner);
                         } else {
                             this.currentCase = 'C';
                             this.debugText += 'Case C: Center inside, corner outside circle\n';
