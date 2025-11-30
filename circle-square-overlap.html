@@ -389,32 +389,22 @@
                 const vertVec = { x: s - cx, y: yOnVertical - cy };    // along vertical edge x = s
                 const horizVec = { x: xOnHorizontal - cx, y: s - cy }; // along horizontal edge y = s
 
-                const angleDelta = (from, to) => {
-                    let diff = to - from;
-                    if (diff < 0) diff += 2 * Math.PI;
-                    return diff;
-                };
-                const normalize = (a) => {
-                    let ang = a % (2 * Math.PI);
-                    if (ang < 0) ang += 2 * Math.PI;
-                    return ang;
-                };
+                const lenH2 = horizVec.x * horizVec.x + horizVec.y * horizVec.y;
+                const lenV2 = vertVec.x * vertVec.x + vertVec.y * vertVec.y;
+                const lenC2 = cornerVec.x * cornerVec.x + cornerVec.y * cornerVec.y;
 
-                const angleH = normalize(Math.atan2(horizVec.y, horizVec.x));
-                const angleV = normalize(Math.atan2(vertVec.y, vertVec.x));
-                const angleCorner = normalize(Math.atan2(cornerVec.y, cornerVec.x));
+                const dotHV = horizVec.x * vertVec.x + horizVec.y * vertVec.y;
+                const dotCH = cornerVec.x * horizVec.x + cornerVec.y * horizVec.y;
+                const dotCV = cornerVec.x * vertVec.x + cornerVec.y * vertVec.y;
 
-                const ccwArc = angleDelta(angleH, angleV);
-                const cwArc = 2 * Math.PI - ccwArc;
-                const sectorTheta = Math.min(ccwArc, cwArc);
-
+                const crossMagHV = Math.sqrt(Math.max(0, lenH2 * lenV2 - dotHV * dotHV));
+                const sectorTheta = Math.atan2(crossMagHV, dotHV);
                 const sectorArea = 0.5 * r * r * sectorTheta;
-                const cross = (a, b) => a.x * b.y - a.y * b.x;
 
-                const triangleHoriz = 0.5 * Math.abs(cross(cornerVec, horizVec));
-                const triangleVert = 0.5 * Math.abs(cross(cornerVec, vertVec));
+                const triangleHoriz = 0.5 * Math.sqrt(Math.max(0, lenC2 * lenH2 - dotCH * dotCH));
+                const triangleVert = 0.5 * Math.sqrt(Math.max(0, lenC2 * lenV2 - dotCV * dotCV));
 
-                return Math.max(0, sectorArea + signHoriz * triangleHoriz + signVert * triangleVert);
+                return sectorArea + signHoriz * triangleHoriz + signVert * triangleVert;
             }
 
             caseDOverlapArea(r, cx, cy) {
