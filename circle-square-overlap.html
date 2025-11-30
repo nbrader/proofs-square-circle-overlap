@@ -483,16 +483,6 @@
                 }
 
                 // Case E: Center outside, circle reaches square edge
-                // Check if distance from center to nearest square edge <= R
-                const distToRightEdge = Math.abs(ax - s);
-                const distToTopEdge = Math.abs(ay - s);
-                const distToNearestEdge = Math.min(
-                    ax > s ? distToRightEdge : Infinity,
-                    ay > s ? distToTopEdge : Infinity,
-                    ax < s ? 0 : Infinity,  // if inside in x, distance is 0
-                    ay < s ? 0 : Infinity   // if inside in y, distance is 0
-                );
-
                 // For center outside square: check if we can reach an edge
                 if ((ax >= s || ay >= s)) {
                     // Distance to closest edge (considering we might be inside in one dimension)
@@ -503,8 +493,12 @@
                     if ((ax >= s && dxToEdge <= R) || (ay >= s && dyToEdge <= R)) {
                         this.currentCase = 'E';
                         this.debugText += 'Case E: Edge segment (center outside)\n';
-                        const sag = Math.max(sagitta_x, sagitta_y);
-                        return this.caseEOverlapArea(R, sag);
+                        // For Case E: sagitta = R - distance_to_edge
+                        const sagE_x = ax >= s ? (R - dxToEdge) : 0;
+                        const sagE_y = ay >= s ? (R - dyToEdge) : 0;
+                        const sagE = Math.max(sagE_x, sagE_y);
+                        this.debugText += `sagE_x=${sagE_x.toFixed(3)}, sagE_y=${sagE_y.toFixed(3)}, sagE=${sagE.toFixed(3)}\n`;
+                        return this.caseEOverlapArea(R, sagE);
                     }
                 }
 
