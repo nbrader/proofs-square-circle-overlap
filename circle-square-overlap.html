@@ -892,36 +892,28 @@
 
             drawOverlapRegion() {
                 const ctx = this.ctx;
-                const samples = 360;
+                const squareTopLeft = this.worldToPixel(-1, 1);
+                const squareBottomRight = this.worldToPixel(1, -1);
+                const squareWidth = squareBottomRight.x - squareTopLeft.x;
+                const squareHeight = squareBottomRight.y - squareTopLeft.y;
+
+                const circleCenter = this.worldToPixel(this.cx, this.cy);
+                const circleRadius = this.R * this.scale;
+
+                ctx.save();
+                // Clip to the square, then draw the circle so only the overlap remains.
+                ctx.beginPath();
+                ctx.rect(squareTopLeft.x, squareTopLeft.y, squareWidth, squareHeight);
+                ctx.clip();
 
                 ctx.fillStyle = 'rgba(255, 152, 0, 0.4)';
                 ctx.strokeStyle = '#FF9800';
                 ctx.lineWidth = 2;
-
                 ctx.beginPath();
-                let started = false;
-
-                for (let i = 0; i <= samples; i++) {
-                    const angle = (i / samples) * 2 * Math.PI;
-                    const wx = this.cx + this.R * Math.cos(angle);
-                    const wy = this.cy + this.R * Math.sin(angle);
-
-                    const inSquare = wx >= -1 && wx <= 1 && wy >= -1 && wy <= 1;
-
-                    if (inSquare) {
-                        const px = this.worldToPixel(wx, wy);
-                        if (!started) {
-                            ctx.moveTo(px.x, px.y);
-                            started = true;
-                        } else {
-                            ctx.lineTo(px.x, px.y);
-                        }
-                    }
-                }
-
-                ctx.closePath();
+                ctx.arc(circleCenter.x, circleCenter.y, circleRadius, 0, 2 * Math.PI);
                 ctx.fill();
                 ctx.stroke();
+                ctx.restore();
             }
 
             updateInfo() {
