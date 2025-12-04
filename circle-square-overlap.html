@@ -409,7 +409,10 @@
             }
 
             caseDOverlapArea(r, cx, cy) {
-                // Case D: center inside square, corner inside circle (add both triangles).
+                // Case D: corner inside circle.
+                // This case covers all situations where a corner is inside the circle,
+                // regardless of whether the center is inside or outside the square.
+                // The cornerSectorArea function handles the different sign combinations internally.
                 return this.cornerSectorArea(r, cx, cy, +1, +1);
             }
 
@@ -418,7 +421,8 @@
             }
 
             caseFOverlapArea(r, cx, cy) {
-                // Case F: same geometry as D/G but subtract the outside-edge triangle only.
+                // Legacy: Case F is now merged with Case D.
+                // This handles mixed position (center outside one axis, inside the other).
                 const s = SQUARE_HALF_SIDE;
                 const dx = s - cx;
                 const dy = s - cy;
@@ -437,7 +441,8 @@
             }
 
             caseGOverlapArea(r, cx, cy) {
-                // Case G: same geometry as D/F but subtract both triangles.
+                // Legacy: Case G is now merged with Case D.
+                // This handles center outside both axes.
                 const s = SQUARE_HALF_SIDE;
                 const dx = s - cx;
                 const dy = s - cy;
@@ -587,17 +592,17 @@
                         if (ax < s && ay < s) {
                             caseType = cornerInCircle ? 'D' : 'C';
                             this.debugText += caseType === 'D'
-                                ? 'Case D: Center inside, corner inside circle\n'
+                                ? 'Case D: Corner inside circle (center inside square)\n'
                                 : 'Case C: Center inside, corner outside circle\n';
                         } else if (ax >= s && ay >= s) {
                             if (cornerInCircle) {
-                                caseType = 'G';
-                                this.debugText += 'Case G: Corner sector (center outside both)\n';
+                                caseType = 'D';
+                                this.debugText += 'Case D: Corner inside circle (center outside both)\n';
                             }
                         } else {
                             if (cornerInCircle) {
-                                caseType = 'F';
-                                this.debugText += 'Case F: Mixed position, corner inside circle\n';
+                                caseType = 'D';
+                                this.debugText += 'Case D: Corner inside circle (mixed position)\n';
                             }
                         }
                     }
@@ -777,8 +782,6 @@
                     'C': 'rgba(255, 0, 255, 0.15)',      // magenta
                     'D': 'rgba(255, 255, 0, 0.15)',      // yellow
                     'E': 'rgba(255, 0, 0, 0.15)',        // red
-                    'F': 'rgba(0, 128, 0, 0.15)',        // green
-                    'G': 'rgba(255, 128, 0, 0.15)',      // orange
                     'H': 'rgba(200, 200, 200, 0.15)'     // gray
                 };
 
@@ -821,12 +824,12 @@
                                     caseType = cornerInCircle ? 'D' : 'C';
                                 } else if (ax >= s && ay >= s) {
                                     if (cornerInCircle) {
-                                        caseType = 'G';
+                                        caseType = 'D';
                                     }
                                     // else fall through to E/H check
                                 } else {
                                     if (cornerInCircle) {
-                                        caseType = 'F';
+                                        caseType = 'D';
                                     }
                                     // else fall through to E/H check
                                 }
@@ -877,8 +880,6 @@
                     { case: 'C', pos: [s - R * 0.8, s - R * 0.8], color: '#CC00CC' },
                     { case: 'D', pos: [s - R * 0.4, s - R * 0.4], color: '#CCCC00' },
                     { case: 'E', pos: [s + R * 0.5, 0], color: '#CC0000' },
-                    { case: 'F', pos: [s - R * 0.4, s + R * 0.4], color: '#008800' },
-                    { case: 'G', pos: [s + R * 0.4, s + R * 0.4], color: '#CC8800' },
                     { case: 'H', pos: [s + R * 0.85, s + R * 0.85], color: '#888888' }
                 ];
 
@@ -958,10 +959,8 @@
                     'A': 'Case A: πR² (Circle fully inside)',
                     'B': 'Case B: πR² - segment (Extends beyond one edge)',
                     'C': 'Case C: πR² - 2 segments (Extends beyond two edges)',
-                    'D': 'Case D: Complex (Asymmetric corner case)',
+                    'D': 'Case D: Corner sector (Corner inside circle)',
                     'E': 'Case E: Single segment (Mostly outside, edge)',
-                    'F': 'Case F: (Alternative configuration)',
-                    'G': 'Case G: Corner sector (Mostly outside, corner)',
                     'H': 'Case H: 0 (No overlap)'
                 };
                 document.getElementById('caseIndicator').textContent =
