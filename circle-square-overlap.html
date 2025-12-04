@@ -205,6 +205,14 @@
                 <label for="showDebug">Show Debug:</label>
                 <input type="checkbox" id="showDebug">
             </div>
+            <div class="control-group">
+                <button id="drawPolygonBtn" style="padding: 8px 16px; font-size: 14px; cursor: pointer;">
+                    🖊️ Draw Custom Polygon
+                </button>
+                <span id="drawModeIndicator" style="margin-left: 10px; font-weight: bold; display: none; color: #FF5722;">
+                    DRAWING MODE (click to add vertices, double-click to finish)
+                </span>
+            </div>
         </div>
 
         <div class="case-indicator" id="caseIndicator">Domain: -</div>
@@ -263,6 +271,8 @@
                 this.cy = 0;  // Circle center y
 
                 this.isDragging = false;
+                this.isDrawingPolygon = false;
+                this.polygonVertices = [];
                 this.resolution = 120;
                 this.currentCase = '';
                 this.debugText = '';
@@ -383,6 +393,26 @@
                 document.getElementById('showDebug').addEventListener('change', (e) => {
                     document.getElementById('debugInfo').style.display = e.target.checked ? 'block' : 'none';
                 });
+
+                // Draw polygon button
+                document.getElementById('drawPolygonBtn').addEventListener('click', () => {
+                    this.isDrawingPolygon = !this.isDrawingPolygon;
+                    if (this.isDrawingPolygon) {
+                        this.polygonVertices = [];
+                        this.shapeType = 'custom';
+                        document.getElementById('shapeType').value = 'custom';
+                        this.updateShapeControls();
+                        document.getElementById('drawModeIndicator').style.display = 'inline';
+                        document.getElementById('drawPolygonBtn').textContent = '✖️ Cancel Drawing';
+                    } else {
+                        document.getElementById('drawModeIndicator').style.display = 'none';
+                        document.getElementById('drawPolygonBtn').textContent = '🖊️ Draw Custom Polygon';
+                        if (this.polygonVertices.length >= 3) {
+                            this.finishPolygonDrawing();
+                        }
+                    }
+                    this.updateDisplay();
+                });
             }
 
             updateShapeControls() {
@@ -492,6 +522,20 @@
                 }
             }
 
+            finishPolygonDrawing() {
+                if (this.polygonVertices.length >= 3) {
+                    this.customVertices = this.polygonVertices;
+                    document.getElementById('customVertices').value = JSON.stringify(this.customVertices);
+                    this.updateShapeVertices();
+                }
+                this.isDrawingPolygon = false;
+                this.polygonVertices = [];
+                document.getElementById('drawModeIndicator').style.display = 'none';
+                document.getElementById('drawPolygonBtn').textContent = '🖊️ Draw Custom Polygon';
+                this.updateDisplay();
+                this.update3DSurface();
+            }
+
             pixelToWorld(px, py) {
                 return {
                     x: (px - CANVAS_CENTER) / this.scale + this.panX,
@@ -513,10 +557,26 @@
                     const py = e.clientY - rect.top;
                     const world = this.pixelToWorld(px, py);
 
+                    // Handle polygon drawing mode
+                    if (this.isDrawingPolygon) {
+                        this.polygonVertices.push([world.x, world.y]);
+                        this.updateDisplay();
+                        return;
+                    }
+
+                    // Handle circle dragging mode
                     const dx = world.x - this.cx;
                     const dy = world.y - this.cy;
                     if (dx * dx + dy * dy <= this.R * this.R) {
                         this.isDragging = true;
+                    }
+                });
+
+                // Double-click to finish polygon drawing
+                this.canvas2d.addEventListener('dblclick', (e) => {
+                    if (this.isDrawingPolygon && this.polygonVertices.length >= 3) {
+                        e.preventDefault();
+                        this.finishPolygonDrawing();
                     }
                 });
 
@@ -1143,11 +1203,49 @@
                 // Draw overlap region
                 this.drawOverlapRegion();
 
+                // Draw polygon being drawn
+                if (this.isDrawingPolygon && this.polygonVertices.length > 0) {
+                    ctx.strokeStyle = '#FF5722';
+                    ctx.fillStyle = 'rgba(255, 87, 34, 0.2)';
+                    ctx.lineWidth = 3;
+                    ctx.setLineDash([5, 5]);
+
+                    ctx.beginPath();
+                    const firstPt = this.worldToPixel(this.polygonVertices[0][0], this.polygonVertices[0][1]);
+                    ctx.moveTo(firstPt.x, firstPt.y);
+
+                    for (let i = 1; i < this.polygonVertices.length; i++) {
+                        const pt = this.worldToPixel(this.polygonVertices[i][0], this.polygonVertices[i][1]);
+                        ctx.lineTo(pt.x, pt.y);
+                    }
+
+                    // Close preview if we have at least 3 vertices
+                    if (this.polygonVertices.length >= 3) {
+                        ctx.closePath();
+                        ctx.fill();
+                    }
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    // Draw vertices
+                    ctx.fillStyle = '#FF5722';
+                    for (const vertex of this.polygonVertices) {
+                        const pt = this.worldToPixel(vertex[0], vertex[1]);
+                        ctx.beginPath();
+                        ctx.arc(pt.x, pt.y, 5, 0, 2 * Math.PI);
+                        ctx.fill();
+                    }
+                }
+
                 // Labels
                 ctx.fillStyle = '#000';
                 ctx.font = 'bold 14px monospace';
                 ctx.fillText(`R = ${this.R.toFixed(2)}`, 10, 25);
                 ctx.fillText(`Center: (${this.cx.toFixed(2)}, ${this.cy.toFixed(2)})`, 10, 45);
+                if (this.isDrawingPolygon) {
+                    ctx.fillStyle = '#FF5722';
+                    ctx.fillText(`Vertices: ${this.polygonVertices.length}`, 10, 65);
+                }
             }
 
             drawDomainRegions() {
