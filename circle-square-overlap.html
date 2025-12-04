@@ -174,9 +174,19 @@
                 <span class="value-display" id="radiusValue">R = 0.50</span>
             </div>
             <div class="control-group">
-                <label for="scale">Display Scale:</label>
-                <input type="range" id="scale" min="100" max="300" value="200" step="10">
+                <label for="scale">Display Scale (Zoom):</label>
+                <input type="range" id="scale" min="10" max="500" value="200" step="5">
                 <span class="value-display" id="scaleValue">200</span>
+            </div>
+            <div class="control-group">
+                <label for="panX">Pan X:</label>
+                <input type="range" id="panX" min="-10" max="10" value="0" step="0.1">
+                <span class="value-display" id="panXValue">0.00</span>
+            </div>
+            <div class="control-group">
+                <label for="panY">Pan Y:</label>
+                <input type="range" id="panY" min="-10" max="10" value="0" step="0.1">
+                <span class="value-display" id="panYValue">0.00</span>
             </div>
             <div class="control-group">
                 <label for="resolution">3D Resolution:</label>
@@ -247,6 +257,8 @@
 
                 this.R = 0.5;  // Circle radius (now arbitrary)
                 this.scale = 200;  // pixels per unit
+                this.panX = 0;  // Pan offset X
+                this.panY = 0;  // Pan offset Y
                 this.cx = 0;  // Circle center x
                 this.cy = 0;  // Circle center y
 
@@ -339,6 +351,18 @@
                 document.getElementById('scale').addEventListener('input', (e) => {
                     this.scale = parseFloat(e.target.value);
                     document.getElementById('scaleValue').textContent = this.scale;
+                    this.updateDisplay();
+                });
+
+                document.getElementById('panX').addEventListener('input', (e) => {
+                    this.panX = parseFloat(e.target.value);
+                    document.getElementById('panXValue').textContent = this.panX.toFixed(2);
+                    this.updateDisplay();
+                });
+
+                document.getElementById('panY').addEventListener('input', (e) => {
+                    this.panY = parseFloat(e.target.value);
+                    document.getElementById('panYValue').textContent = this.panY.toFixed(2);
                     this.updateDisplay();
                 });
 
@@ -470,15 +494,15 @@
 
             pixelToWorld(px, py) {
                 return {
-                    x: (px - CANVAS_CENTER) / this.scale,
-                    y: (CANVAS_CENTER - py) / this.scale
+                    x: (px - CANVAS_CENTER) / this.scale + this.panX,
+                    y: (CANVAS_CENTER - py) / this.scale + this.panY
                 };
             }
 
             worldToPixel(wx, wy) {
                 return {
-                    x: CANVAS_CENTER + wx * this.scale,
-                    y: CANVAS_CENTER - wy * this.scale
+                    x: CANVAS_CENTER + (wx - this.panX) * this.scale,
+                    y: CANVAS_CENTER - (wy - this.panY) * this.scale
                 };
             }
 
@@ -514,6 +538,35 @@
 
                 this.canvas2d.addEventListener('mouseleave', () => {
                     this.isDragging = false;
+                });
+
+                // Mouse wheel zoom
+                this.canvas2d.addEventListener('wheel', (e) => {
+                    e.preventDefault();
+                    const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+                    const newScale = Math.max(10, Math.min(500, this.scale * zoomFactor));
+
+                    // Get mouse position before zoom
+                    const rect = this.canvas2d.getBoundingClientRect();
+                    const px = e.clientX - rect.left;
+                    const py = e.clientY - rect.top;
+                    const worldBefore = this.pixelToWorld(px, py);
+
+                    // Update scale
+                    this.scale = newScale;
+                    document.getElementById('scale').value = newScale;
+                    document.getElementById('scaleValue').textContent = newScale.toFixed(0);
+
+                    // Adjust pan to zoom towards mouse position
+                    const worldAfter = this.pixelToWorld(px, py);
+                    this.panX += worldBefore.x - worldAfter.x;
+                    this.panY += worldBefore.y - worldAfter.y;
+                    document.getElementById('panX').value = this.panX;
+                    document.getElementById('panXValue').textContent = this.panX.toFixed(2);
+                    document.getElementById('panY').value = this.panY;
+                    document.getElementById('panYValue').textContent = this.panY.toFixed(2);
+
+                    this.updateDisplay();
                 });
             }
 
