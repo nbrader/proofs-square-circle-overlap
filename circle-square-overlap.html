@@ -1034,7 +1034,7 @@
                 }
 
                 // Build sectors by walking intersections in angular order; every gap gets one arc, never consecutive arcs.
-                if (collectData && circlePts.length > 0) {
+                if (circlePts.length > 0) {
                     // Deduplicate intersection points by edge/parameter
                     const dedupMap = new Map();
                     for (const p of circlePts) {
@@ -1073,16 +1073,18 @@
                         const sectorArea = 0.5 * r * r * delta;
                         area += sectorArea;
 
-                        sectors.push({
-                            cx, cy, r,
-                            startAngle: start,
-                            endAngle: end,
-                            area: sectorArea,
-                            fromEdge: a.edge,
-                            fromParam: a.param,
-                            toEdge: b.edge,
-                            toParam: b.param
-                        });
+                        if (collectData) {
+                            sectors.push({
+                                cx, cy, r,
+                                startAngle: start,
+                                endAngle: end,
+                                area: sectorArea,
+                                fromEdge: a.edge,
+                                fromParam: a.param,
+                                toEdge: b.edge,
+                                toParam: b.param
+                            });
+                        }
                     }
                 }
 
