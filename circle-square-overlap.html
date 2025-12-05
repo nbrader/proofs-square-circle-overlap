@@ -1786,9 +1786,18 @@
              */
             prepareBoundaryElements(triangles, sectors) {
                 const elements = [];
+                const numEdges = this.shapeVertices.length;
 
                 // Helper: Create a unique key for a point on the polygon boundary
-                const pointKey = (edgeIdx, param) => `${edgeIdx}:${param.toFixed(8)}`;
+                // Normalize vertices so edge i at t=1.0 becomes edge i+1 at t=0.0
+                const pointKey = (edgeIdx, param) => {
+                    // If at end of edge (t ≈ 1.0), normalize to start of next edge
+                    if (Math.abs(param - 1.0) < 1e-6) {
+                        const nextEdge = (edgeIdx + 1) % numEdges;
+                        return `${nextEdge}:0.00000000`;
+                    }
+                    return `${edgeIdx}:${param.toFixed(8)}`;
+                };
 
                 // Add triangles
                 for (const tri of triangles) {
@@ -1883,15 +1892,21 @@
                 if (componentIndices.length === 0) return [];
                 if (componentIndices.length === 1) return componentIndices;
 
-                // Build a map: startPoint -> element index
+                // Build a map: startPoint -> array of element indices
                 const startPointMap = new Map();
-                const endPointMap = new Map();
 
                 for (const idx of componentIndices) {
                     const elem = elements[idx];
-                    startPointMap.set(elem.startPoint, idx);
-                    endPointMap.set(elem.endPoint, idx);
+                    if (!startPointMap.has(elem.startPoint)) {
+                        startPointMap.set(elem.startPoint, []);
+                    }
+                    startPointMap.get(elem.startPoint).push(idx);
                 }
+
+                // Helper: Extract edge index from point key (format "edge:param")
+                const getEdgeFromPoint = (pointKey) => {
+                    return parseInt(pointKey.split(':')[0]);
+                };
 
                 // Trace the boundary starting from the first element
                 const ordered = [];
@@ -1906,17 +1921,69 @@
 
                     // Find next element: one that starts where current ends
                     const currentEnd = elements[currentIdx].endPoint;
-                    const nextIdx = startPointMap.get(currentEnd);
+                    const currentEndEdge = getEdgeFromPoint(currentEnd);
+                    const candidates = (startPointMap.get(currentEnd) || []).filter(idx => !used.has(idx));
 
-                    if (nextIdx !== undefined && !used.has(nextIdx)) {
-                        currentIdx = nextIdx;
-                    } else {
+                    if (candidates.length === 0) {
                         // Can't continue, try to find any unused element
                         const remaining = componentIndices.find(idx => !used.has(idx));
                         if (remaining !== undefined) {
                             currentIdx = remaining;
                         } else {
                             break;
+                        }
+                    } else if (candidates.length === 1) {
+                        currentIdx = candidates[0];
+                    } else {
+                        // Multiple candidates - check for immediate loops (detours)
+                        // An immediate loop is a path that returns to currentEnd
+                        const immediateLoops = [];
+
+                        for (const candIdx of candidates) {
+                            // Check if this candidate leads back to currentEnd
+                            let checkIdx = candIdx;
+                            let loopLength = 0;
+                            const visited = new Set([currentIdx]);
+
+                            while (loopLength < 10) { // Max loop depth to avoid infinite loops
+                                if (used.has(checkIdx)) break;
+
+                                visited.add(checkIdx);
+                                const endPt = elements[checkIdx].endPoint;
+
+                                if (endPt === currentEnd) {
+                                    // Found a loop back to currentEnd!
+                                    immediateLoops.push({ startIdx: candIdx, length: loopLength + 1 });
+                                    break;
+                                }
+
+                                // Try to continue the path
+                                const nextCandidates = (startPointMap.get(endPt) || [])
+                                    .filter(idx => !used.has(idx) && !visited.has(idx));
+
+                                if (nextCandidates.length === 0) break;
+                                checkIdx = nextCandidates[0];
+                                loopLength++;
+                            }
+                        }
+
+                        if (immediateLoops.length > 0) {
+                            // Prefer shortest immediate loop
+                            immediateLoops.sort((a, b) => a.length - b.length);
+                            currentIdx = immediateLoops[0].startIdx;
+                        } else {
+                            // No immediate loops - prefer triangle on same edge over sectors
+                            const trianglesOnSameEdge = candidates.filter(idx => {
+                                const elem = elements[idx];
+                                return elem.type === 'triangle' && getEdgeFromPoint(elem.startPoint) === currentEndEdge;
+                            });
+
+                            if (trianglesOnSameEdge.length > 0) {
+                                currentIdx = trianglesOnSameEdge[0];
+                            } else {
+                                // No triangles on same edge, just take first candidate
+                                currentIdx = candidates[0];
+                            }
                         }
                     }
                 }
@@ -1947,20 +2014,58 @@
                     return;
                 }
 
+                // DEBUG OUTPUT
+                console.log('\n========== ANIMATION DEBUG ==========');
+                console.log(`Circle: cx=${this.cx.toFixed(3)}, cy=${this.cy.toFixed(3)}, R=${this.R.toFixed(3)}`);
+                console.log(`\n--- ALL ELEMENTS (${elements.length}) ---`);
+                elements.forEach((elem, idx) => {
+                    const type = elem.type.charAt(0).toUpperCase();
+                    const area = elem.data.area.toFixed(4);
+                    console.log(`[${idx}] ${type} | start: ${elem.startPoint} | end: ${elem.endPoint} | area: ${area}`);
+                });
+
                 // Step 2: Find connected components
                 const componentGroups = this.findConnectedComponents(elements);
+
+                console.log(`\n--- CONNECTED COMPONENTS (${componentGroups.length}) ---`);
+                componentGroups.forEach((group, compIdx) => {
+                    console.log(`Component ${compIdx}: ${group.length} elements`);
+                    console.log(`  Indices: [${group.join(', ')}]`);
+                });
 
                 // Step 3: Order each component and flatten into animation sequence
                 const animationSequence = [];
 
-                for (const componentIndices of componentGroups) {
+                console.log('\n--- ORDERING WITHIN COMPONENTS ---');
+                for (let compIdx = 0; compIdx < componentGroups.length; compIdx++) {
+                    const componentIndices = componentGroups[compIdx];
                     const orderedIndices = this.orderComponentBoundary(componentIndices, elements);
+
+                    console.log(`\nComponent ${compIdx}:`);
+                    console.log(`  Original: [${componentIndices.join(', ')}]`);
+                    console.log(`  Ordered:  [${orderedIndices.join(', ')}]`);
+
+                    // Show the trace
+                    console.log('  Trace:');
+                    orderedIndices.forEach((idx, pos) => {
+                        const elem = elements[idx];
+                        const type = elem.type.charAt(0).toUpperCase();
+                        console.log(`    ${pos}. [${idx}] ${type} ${elem.startPoint} -> ${elem.endPoint}`);
+                    });
 
                     // Add elements from this component to the sequence
                     for (const idx of orderedIndices) {
                         animationSequence.push(elements[idx]);
                     }
                 }
+
+                console.log(`\n--- FINAL ANIMATION SEQUENCE (${animationSequence.length}) ---`);
+                animationSequence.forEach((elem, pos) => {
+                    const type = elem.type.charAt(0).toUpperCase();
+                    const area = elem.data.area.toFixed(4);
+                    console.log(`${pos}. ${type} | ${elem.startPoint} -> ${elem.endPoint} | area: ${area}`);
+                });
+                console.log('=====================================\n');
 
                 // Store animation data
                 this.animationComponents = animationSequence;
