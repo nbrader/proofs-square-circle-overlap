@@ -58,6 +58,33 @@ This structure generalizes to any polygon: the algorithm alternates between
 straight-line segments (triangles) and circular arcs (sectors), using signed
 areas to correctly handle complex boundary configurations.
 
+### Mathematical foundation
+
+The algorithm is based on **Green's theorem**, which relates area integrals to
+boundary line integrals:
+
+∬_R dA = ∮_∂R x dy = -∮_∂R y dx = (1/2) ∮_∂R (x dy - y dx)
+
+For a simple polygon with vertices (x₀,y₀), ..., (xₙ₋₁,yₙ₋₁), this yields the
+**shoelace formula**:
+
+A = (1/2) Σᵢ (xᵢ · yᵢ₊₁ - xᵢ₊₁ · yᵢ)
+
+Our algorithm extends this to **mixed boundaries** containing both straight edges
+and circular arcs:
+
+1. **Line segments:** Each edge segment inside the circle contributes a signed
+   triangular area from the circle center to the segment endpoints (equivalent to
+   the cross product term in the shoelace formula)
+
+2. **Circular arcs:** Each arc segment inside the polygon contributes a circular
+   sector area (the generalization of the line integral to curved boundaries)
+
+This is effectively a **generalized shoelace formula for circle-polygon overlap**
+using signed sector-triangle decomposition. The signed area formulation
+automatically handles orientation and ensures correctness for both convex and
+non-convex polygons.
+
 ## Goal: integrating over all circle centers
 
 If the objective is to integrate the overlap area over every possible circle

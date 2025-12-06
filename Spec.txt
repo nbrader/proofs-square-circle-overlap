@@ -1,12 +1,26 @@
 // Verified: matches implemented overlap logic (polygon fully inside -> polygon triangles; circle fully inside -> full circle primitive; intersection -> alternating lines and arcs, no consecutive arcs, arcs chosen by clockwise circle order and inside-polygon midpoints).
 
+Mathematical Foundation:
+The boundary-walk algorithm is based on Green's theorem, which relates area integrals to boundary line integrals:
+  ∬_R dA = ∮_∂R x dy = -∮_∂R y dx = (1/2) ∮_∂R (x dy - y dx)
+
+For simple polygons, this yields the shoelace formula:
+  A = (1/2) Σᵢ (xᵢ · yᵢ₊₁ - xᵢ₊₁ · yᵢ)
+
+The algorithm extends this to mixed boundaries (straight edges + circular arcs):
+  - Line segments: signed triangular areas from circle center to segment endpoints
+  - Circular arcs: circular sector areas (generalization of line integral to curves)
+
+This is a generalized shoelace formula for circle-polygon overlap using signed sector-triangle decomposition.
+
 The polygon will either be:
 1. Completely enclosed in the circle: algorithm traces the entire polygon as triangles in the order they occur
 2. Circle entirely enclosed in the polygon: overlap is the full circle (special case using circle primitive instead of sectors/triangles)
 3. Polygon intersects the circle: boundary of overlap is a set of continuous chains of arcs and line segments with multiple consecutive line segments possible within a component but never multiple consecutive arcs. A polygon vertex is only considered to intersect a circle if the incoming and outgoing edges are on different sides of the circle perimeter. There should always be a way to return to a chain of line segments via a clockwise journey around the circle to the next intersection between circle and polygon.
 
-Known Issues to Address:
-- Point 1: Circle-fully-inside/outside detection currently uses 8-point sampling which is unreliable and causes numerical spikes. Need exact geometric tests:
+Resolved Issues:
+- Point 1 (FIXED): Replaced 8-point circle sampling with exact geometric tests using point-to-segment distance calculations:
   * Circle fully inside polygon: center inside polygon AND all edges farther than radius from center
   * No overlap: center outside polygon AND all vertices farther than radius from center
-- Point 2: Insufficient epsilon tolerance throughout calculations may cause edge-case misclassifications
+  This eliminates numerical spikes and ensures stable behavior across all radius values.
+- Point 2 (PARTIALLY ADDRESSED): Added exact geometric tests for special cases. Further epsilon tolerance improvements may be needed for general intersection cases.
